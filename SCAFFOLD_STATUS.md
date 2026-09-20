@@ -6,28 +6,39 @@ Branch: `feat/phase0-phase1-tiktok` · PR: https://github.com/Mstilwell123/Trend
 ## Product lock
 Desktop menu: **TikTok | YouTube | Instagram | Facebook** (distinct engines) — verified in `platforms.js` / PlatformMenuBar.
 
-## On GitHub (this PR) — critical paths synced
+## BYOK step 3 — Connect your AI (§3d) — scaffolded 2026-09-20
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Connect AI onboarding UI | **Scaffolded** | Step 3 `ConnectAIStep` + shared `ConnectAIForm`; Recommended badges; password key inputs |
+| Settings mirror | **Scaffolded** | Settings → AI providers uses same `ConnectAIForm` |
+| Encryption | **Scaffolded** | `crypto_keys.py` Fernet via `TRENDFLOW_KEY_ENCRYPTION_SECRET`; ephemeral local escape documented |
+| Provider adapters | **Scaffolded (callable stubs)** | `providers/{base,gemini,anthropic,xai}.py` — live SDK/HTTP paths; wire-complete for Study/Test via `llm.py` |
+| Study/Test error paths using user keys | **Scaffolded** | Resolve user keys first; 402 on analyze if missing; pipeline maps auth/quota → "Your API key or quota failed" |
+| Profile / onboarded gate | **Scaffolded** | `POST /profile` no longer sets onboarded alone; `POST /onboarding/complete` requires keys |
+
+### Remaining / honesty notes
+- Provider adapters are production-shaped but not exhaustively integration-tested against live quotas
+- Supabase `002_ai_config.sql` columns ready; Runtime A Mongo still primary for local bootstrap
+- Hosted credits tier (optional later) not started
+- Collapse any historical `.server_chunk_*.txt` loaders if still present on remote
+
+## On GitHub (this PR) — critical paths
 
 ### Backend
-- `backend/server.py` — chunk-loader; exact box source in `.server_chunk_{0..3}.txt` (join verified SHA256 `b540dd4d…` = box 24878 chars)
-- `backend/llm.py` (15007) — full Anthropic+Gemini pipeline
-- `backend/video.py` (4100) — yt-dlp acquisition
-- `backend/models.py` (7016) — full richer Pydantic models
-- `backend/auth.py`, `storage.py`, `trends_seed.py`, `requirements.txt`
-- `supabase/migrations/001_init.sql` (5491)
+- `backend/server.py` — profile gate, `/ai-config`, `/onboarding/complete`, BYOK pipeline
+- `backend/llm.py` — user-key resolution + provider adapters
+- `backend/crypto_keys.py`, `backend/providers/*`
+- `backend/models.py` — `AiConfigPutBody`, `AiProviderConfigPublic`, `complete_onboarding`
+- `supabase/migrations/002_ai_config.sql`
 
-### Frontend Analyze (Study / Test / Trends)
-- `frontend/src/pages/StudyMode.jsx`, `TestMode.jsx`, `AnalysisView.jsx`, `PlatformAnalyze.jsx`
-- `frontend/src/components/trends/TrendsPanel.jsx`, `AngleVsTrend.jsx`
-- Analysis scorecard kit under `frontend/src/components/analysis/` (all 10)
-- `frontend/src/components/test/TestUploadZone.jsx`, `TestMetadataForm.jsx`
-- `frontend/src/components/AlignmentGauge.jsx`, `Layout.jsx`, `Sidebar.jsx`
-- Lib helpers: `api.js`, `auth.jsx`, `constants.js`, `pricing.js`, `utils.js`, `platforms.js`
+### Frontend
+- `frontend/src/components/ai/ConnectAIForm.jsx`
+- `frontend/src/components/onboarding/ConnectAIStep.jsx`
+- `frontend/src/pages/Onboarding.jsx` — 3 steps
+- `frontend/src/pages/Settings.jsx` — AI providers section
 
-## Remaining gaps (non-blocking for Study/Test/Trends core)
-- Prefer collapsing `.server_chunk_*.txt` into a single monolithic `backend/server.py` when a ~25KB MCP push is practical (loader is runtime-equivalent today)
-- Landing/dashboard/pricing/public pages App.js imports (Landing, Login, Signup, Dashboard, Vault, Settings, PublicReport, EmbedReport, Pricing, Onboarding)
-- UI kit under `frontend/src/components/ui/`
-- Landing/dashboard/onboarding/settings/pricing component trees
+## Env
+See `.env.example`: `TRENDFLOW_KEY_ENCRYPTION_SECRET`, `ALLOW_DEV_SHARED_LLM_KEYS=false`, BYOK notes.
 
 Source of truth: `/workspace/trendflowai`
