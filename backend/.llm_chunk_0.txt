@@ -1,0 +1,113 @@
+"""LLM pipeline: user BYOK keys first (perception + reason).
+
+Product lock (§3d):
+- Customer Study/Test traffic uses **per-user** encrypted keys — never shared
+  Pragvance GEMINI_API_KEY / ANTHROPIC_API_KEY for production customer traffic.
+- Dev escape hatch: ALLOW_DEV_SHARED_LLM_KEYS=true AND no user keys → env fallback
+  (local smoke only; document as local-only).
+- Provider auth/quota → "Your API key or quota failed"
+- Missing keys → "Connect your AI keys in Settings"
+"""
+from __future__ import annotations
+
+import os
+import json
+import re
+import uuid
+import logging
+from dataclasses import dataclass
+from typing import Dict, Any, List, Optional
+
+from providers.base import (
+    DEFAULTS,
+    ProviderAuthError,
+    ProviderQuotaError,
+)
+from providers.gemini import GeminiPerception
+from providers.anthropic import AnthropicReason
+from providers.xai import XAIReason
+import crypto_keys
+
+log = logging.getLogger("llm")
+
+# Env fallbacks — LOCAL ONLY when ALLOW_DEV_SHARED_LLM_KEYS=true
+_ENV_ANTHROPIC = os.environ.get("ANTHROPIC_API_KEY", "")
+_ENV_GEMINI = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY", "")
+_ENV_XAI = os.environ.get("XAI_API_KEY", "")
+
+USER_FRIENDLY_KEY_ERROR = "Your API key or quota failed"
+MISSING_KEYS_ERROR = "Connect your AI keys in Settings"
+
+
+class MissingUserKeysError(Exception):
+    """Raised when Study/Test needs keys but user has none (and no dev escape)."""
+
+    def __init__(self, message: str = MISSING_KEYS_ERROR):
+        super().__init__(message)
+
+
+class UserProviderError(Exception):
+    """Raised on provider auth/quota failures — message is user-safe."""
+
+    def __init__(self, message: str = USER_FRIENDLY_KEY_ERROR):
+        super().__init__(message)
+
+
+@dataclass
+class LLMCredentials:
+    perception_provider: str
+    perception_model: str
+    perception_api_key: str
+    reason_provider: str
+    reason_model: str
+    reason_api_key: str
+    source: str  # "user" | "dev_shared"
+
+
+def _allow_dev_shared() -> bool:
+    return os.environ.get("ALLOW_DEV_SHARED_LLM_KEYS", "").lower() in ("1", "true", "yes")
+
+
+def resolve_credentials(user: Optional[Dict[str, Any]]) -> LLMCredentials:
+    """Resolve LLM credentials from user.ai_config (encrypted) or local-only env."""
+    cfg = (user or {}).get("ai_config") or {}
+    perception_provider = cfg.get("perception_provider") or DEFAULTS["perception_provider"]
+    perception_model = cfg.get("perception_model") or DEFAULTS["perception_model"]
+    reason_provider = cfg.get("reason_provider") or DEFAULTS["reason_provider"]
+    reason_model = cfg.get("reason_model") or DEFAULTS["reason_model"]
+
+    perception_key = ""
+    reason_key = ""
+    if cfg.get("perception_key_enc"):
+        try:
+            perception_key = crypto_keys.decrypt_key(cfg["perception_key_enc"])
+        except Exception as e:
+            log.warning(f"Failed to decrypt perception key: {e}")
+    if cfg.get("reason_key_enc"):
+        try:
+            reason_key = crypto_keys.decrypt_key(cfg["reason_key_enc"])
+        except Exception as e:
+            log.warning(f"Failed to decrypt reason key: {e}")
+
+    if perception_key and reason_key:
+        return LLMCredentials(
+            perception_provider=perception_provider,
+            perception_model=perception_model,
+            perception_api_key=perception_key,
+            reason_provider=reason_provider,
+            reason_model=reason_model,
+            reason_api_key=reason_key,
+            source="user",
+        )
+
+    if _allow_dev_shared():
+        # Local smoke only — never the prod customer path
+        env_perception = _ENV_GEMINI if perception_provider == "gemini" else _ENV_GEMINI
+        if reason_provider == "anthropic":
+            env_reason = _ENV_ANTHROPIC
+        elif reason_provider == "xai":
+            env_reason = _ENV_XAI or _ENV_ANTHROPIC
+        else:
+            env_reason = _ENV_ANTHROPIC
+        if env_perception and env_reason:
+            log.warning(
