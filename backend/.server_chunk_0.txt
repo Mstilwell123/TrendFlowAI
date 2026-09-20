@@ -1,1 +1,91 @@
-placeholder
+"""TrendFlowAI — FastAPI backend (Runtime A)."""
+import os
+import logging
+import secrets
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / ".env")
+
+from models import (
+    UserDoc, SignupBody, LoginBody, TokenResponse, ProfileBody,
+    AiConfigPutBody, AnalyzeBody, AnalysisDoc, RateScriptBody, OutcomeBody, OutcomeDoc,
+    NICHES, COMPONENTS, TIERS, TOPUPS, _now_iso, _uuid,
+)
+import crypto_keys
+from providers.base import PERCEPTION_PROVIDERS, REASON_PROVIDERS, DEFAULTS as AI_DEFAULTS
+from auth import hash_password, verify_password, create_token, CurrentUserId
+import llm
+import storage
+import video as video_mod
+from trends_seed import TIKTOK_PULSE, TIKTOK_CLUSTERS, PLATFORM_STUBS, AS_OF as TRENDS_AS_OF
+
+# In-memory trend store (Phase 1 seed; Supabase tables in supabase/migrations)
+_TREND_PULSES = {"tiktok": TIKTOK_PULSE}
+_TREND_CLUSTERS = {"tiktok": list(TIKTOK_CLUSTERS)}
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+log = logging.getLogger("server")
+
+# Mongo
+client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+db = client[os.environ["DB_NAME"]]
+users_col = db["tf_users"]
+analyses_col = db["tf_analyses"]
+ratings_col = db["tf_script_ratings"]
+outcomes_col = db["tf_outcomes"]
+vault_col = db["tf_vault"]
+uploads_col = db["tf_uploads"]
+
+app = FastAPI(title="TrendFlowAI")
+api = APIRouter(prefix="/api")
+
+
+def _user_public(u: dict) -> dict:
+    if not u:
+        return {}
+    ai = llm.public_ai_config(u)
+    return {
+        "id": u["id"], "email": u["email"], "name": u.get("name", ""),
+        "niche": u.get("niche"), "brand_voice": u.get("brand_voice"),
+        "subscription_tier": u.get("subscription_tier", "free"),
+        "onboarded": u.get("onboarded", False),
+        "has_ai_keys": bool(ai.get("has_perception_key") and ai.get("has_reason_key")),
+        "ai_config": ai,  # public only — never raw keys
+        "created_at": u.get("created_at"),
+    }
+
+
+def _analysis_public(a: dict) -> dict:
+    scorecard = a.get("scorecard") or {}
+    return {
+        "id": a["id"], "user_id": a["user_id"], "mode": a["mode"], "status": a["status"],
+        "progress": a.get("progress", 0), "error": a.get("error"),
+        "video_url": a.get("video_url"), "upload_id": a.get("upload_id"),
+        "platform": a.get("platform"),
+        "post_id": a.get("post_id"),
+        "title": a.get("title"), "description": a.get("description"),
+        "duration_sec": a.get("duration_sec"),
+        "outlier_multiplier": a.get("outlier_multiplier", 1.0),
+        "niche": a.get("niche"),
+        "perception": a.get("perception"), "scorecard": a.get("scorecard"),
+        "scripts": a.get("scripts", []), "alignment": a.get("alignment"),
+        "detected_angle": a.get("detected_angle") or scorecard.get("detected_angle"),
+        "trend_comparison": a.get("trend_comparison"),
+        "overall_score": a.get("overall_score", scorecard.get("composite")),
+        "band": a.get("band") or scorecard.get("band"),
+        "shared_slug": a.get("shared_slug"), "shared_at": a.get("shared_at"),
+        "sent_to_swarm_command": a.get("sent_to_swarm_command", False),
+        "created_at": a.get("created_at"), "updated_at": a.get("updated_at"),
+        "as_of": a.get("as_of"),
+    }
+
+
+def _analysis_public_view(a: dict) -> dict:
+    """Redacted public-facing view of an analysis. No user-identifying fields, no internal flags."""
