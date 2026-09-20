@@ -1,0 +1,98 @@
+                "ALLOW_DEV_SHARED_LLM_KEYS: using shared env LLM keys (local-only escape hatch)"
+            )
+            return LLMCredentials(
+                perception_provider=perception_provider,
+                perception_model=perception_model,
+                perception_api_key=env_perception,
+                reason_provider=reason_provider,
+                reason_model=reason_model,
+                reason_api_key=env_reason,
+                source="dev_shared",
+            )
+
+    raise MissingUserKeysError(MISSING_KEYS_ERROR)
+
+
+def user_has_ai_keys(user: Optional[Dict[str, Any]]) -> bool:
+    cfg = (user or {}).get("ai_config") or {}
+    return bool(cfg.get("perception_key_enc") and cfg.get("reason_key_enc"))
+
+
+def public_ai_config(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    cfg = (user or {}).get("ai_config") or {}
+    return {
+        "perception_provider": cfg.get("perception_provider") or DEFAULTS["perception_provider"],
+        "perception_model": cfg.get("perception_model") or DEFAULTS["perception_model"],
+        "reason_provider": cfg.get("reason_provider") or DEFAULTS["reason_provider"],
+        "reason_model": cfg.get("reason_model") or DEFAULTS["reason_model"],
+        "has_perception_key": bool(cfg.get("perception_key_enc")),
+        "has_reason_key": bool(cfg.get("reason_key_enc")),
+    }
+
+
+def _wrap_provider_errors(fn):
+    """Map provider auth/quota to UserProviderError with safe message."""
+    async def _inner(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except (ProviderAuthError, ProviderQuotaError) as e:
+            log.warning(f"Provider key/quota failure: {e}")
+            raise UserProviderError(USER_FRIENDLY_KEY_ERROR) from e
+        except UserProviderError:
+            raise
+        except MissingUserKeysError:
+            raise
+        except Exception as e:
+            msg = str(e).lower()
+            if any(x in msg for x in ("api key", "401", "403", "unauth", "invalid x-api-key",
+                                       "quota", "rate limit", "429", "resource exhausted", "billing", "credit")):
+                log.warning(f"Mapped provider-looking error: {e}")
+                raise UserProviderError(USER_FRIENDLY_KEY_ERROR) from e
+            raise
+    return _inner
+
+
+_gemini = GeminiPerception()
+_anthropic = AnthropicReason()
+_xai = XAIReason()
+
+
+@_wrap_provider_errors
+async def _perceive_call(creds: LLMCredentials, system: str, user_text: str, video_path: Optional[str] = None) -> str:
+    if creds.perception_provider == "gemini":
+        return await _gemini.perceive(
+            api_key=creds.perception_api_key,
+            model=creds.perception_model,
+            system=system,
+            user_text=user_text,
+            video_path=video_path,
+        )
+    raise RuntimeError(f"Unsupported perception provider: {creds.perception_provider}")
+
+
+@_wrap_provider_errors
+async def _reason_call(creds: LLMCredentials, system: str, user_text: str) -> str:
+    if creds.reason_provider == "anthropic":
+        return await _anthropic.complete(
+            api_key=creds.reason_api_key,
+            model=creds.reason_model,
+            system=system,
+            user_text=user_text,
+        )
+    if creds.reason_provider == "xai":
+        return await _xai.complete(
+            api_key=creds.reason_api_key,
+            model=creds.reason_model,
+            system=system,
+            user_text=user_text,
+        )
+    raise RuntimeError(f"Unsupported reason provider: {creds.reason_provider}")
+
+
+PERCEPTION_SYSTEM = """You are a video perception engine. You will be given a short-form
+video to watch (either as an attached video file, OR — when the file is unavailable — as
+metadata only). Produce a STRUCTURED perception artifact a downstream reasoning model
+can analyze. Do NOT copy verbatim transcript lines — paraphrase so we focus on structure.
+
+You MUST return ONLY valid JSON matching this schema (no prose, no markdown fences):
+{
