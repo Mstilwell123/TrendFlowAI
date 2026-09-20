@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
-import ConnectAIForm, { AI_DEFAULTS } from "../ai/ConnectAIForm";
+import ConnectAIForm from "../ai/ConnectAIForm";
+import { AI_DEFAULTS } from "../ai/aiCatalog";
 
 export default function ConnectAIStep({ onBack, onComplete, loading }) {
   const [form, setForm] = useState({
