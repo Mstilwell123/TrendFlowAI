@@ -1,0 +1,96 @@
+async def get_vault(user_id: str = CurrentUserId):
+    cur = vault_col.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(200)
+    items = await cur.to_list(length=200)
+    return {"items": items}
+
+
+@api.get("/dashboard/stats")
+async def dashboard_stats(user_id: str = CurrentUserId):
+    study_count = await analyses_col.count_documents({"user_id": user_id, "mode": "study"})
+    test_count = await analyses_col.count_documents({"user_id": user_id, "mode": "test"})
+    vault_count = await vault_col.count_documents({"user_id": user_id})
+    outcomes_count = await outcomes_col.count_documents({"user_id": user_id})
+
+    avg = 0
+    cur = analyses_col.find(
+        {"user_id": user_id, "mode": "test", "alignment": {"$ne": None}},
+        {"_id": 0, "alignment": 1},
+    ).limit(100)
+    items = await cur.to_list(length=100)
+    composites = [it["alignment"].get("composite", 0) for it in items if it.get("alignment")]
+    if composites:
+        avg = round(sum(composites) / len(composites))
+
+    return {
+        "study_count": study_count, "test_count": test_count,
+        "vault_count": vault_count, "outcomes_count": outcomes_count,
+        "avg_alignment": avg,
+    }
+
+
+@api.get("/")
+async def root():
+    return {"ok": True, "app": "TrendFlowAI", "version": "0.1"}
+
+
+# ---------- Sharing ----------
+def _generate_slug() -> str:
+    # 10-char URL-safe (~60 bits). Collisions are vanishingly rare; we retry on conflict.
+    return secrets.token_urlsafe(8)[:10]
+
+
+@api.post("/analysis/{analysis_id}/share")
+async def share_analysis(analysis_id: str, user_id: str = CurrentUserId):
+    a = await analyses_col.find_one({"id": analysis_id, "user_id": user_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Not found")
+    if a.get("status") != "done":
+        raise HTTPException(400, "Analysis must be complete before sharing")
+
+    existing_slug = a.get("shared_slug")
+    if existing_slug:
+        return {"slug": existing_slug, "shared_at": a.get("shared_at")}
+
+    for _ in range(5):
+        candidate = _generate_slug()
+        collision = await analyses_col.find_one({"shared_slug": candidate}, {"_id": 0})
+        if not collision:
+            shared_at = _now_iso()
+            await analyses_col.update_one(
+                {"id": analysis_id},
+                {"$set": {"shared_slug": candidate, "shared_at": shared_at, "updated_at": shared_at}},
+            )
+            return {"slug": candidate, "shared_at": shared_at}
+    raise HTTPException(500, "Could not generate unique slug")
+
+
+@api.post("/analysis/{analysis_id}/unshare")
+async def unshare_analysis(analysis_id: str, user_id: str = CurrentUserId):
+    a = await analyses_col.find_one({"id": analysis_id, "user_id": user_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Not found")
+    # $unset removes the field entirely so the partial-filter unique index doesn't index it.
+    await analyses_col.update_one(
+        {"id": analysis_id},
+        {
+            "$unset": {"shared_slug": "", "shared_at": ""},
+            "$set": {"updated_at": _now_iso()},
+        },
+    )
+    return {"ok": True}
+
+
+@api.get("/public/r/{slug}")
+async def get_public_report(slug: str):
+    a = await analyses_col.find_one({"shared_slug": slug, "status": "done"}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Report not found or no longer shared")
+    return _analysis_public_view(a)
+
+
+
+# ---------- Trend Intelligence (Phase 1 — TikTok deep; others stub) ----------
+@api.get("/trends/pulse")
+async def trends_pulse(platform: str = "tiktok"):
+    """Daily/near-daily pulse of currently winning videos for a platform menu."""
+    p = (platform or "tiktok").lower()
