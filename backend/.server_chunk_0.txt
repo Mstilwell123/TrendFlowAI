@@ -1,0 +1,185 @@
+"""TrendFlowAI — FastAPI backend (Runtime A)."""
+import os
+import logging
+import secrets
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / ".env")
+
+from models import (
+    UserDoc, SignupBody, LoginBody, TokenResponse, ProfileBody,
+    AnalyzeBody, AnalysisDoc, RateScriptBody, OutcomeBody, OutcomeDoc,
+    NICHES, COMPONENTS, TIERS, TOPUPS, _now_iso, _uuid,
+)
+from auth import hash_password, verify_password, create_token, CurrentUserId
+import llm
+import storage
+import video as video_mod
+from trends_seed import TIKTOK_PULSE, TIKTOK_CLUSTERS, PLATFORM_STUBS, AS_OF as TRENDS_AS_OF
+
+# In-memory trend store (Phase 1 seed; Supabase tables in supabase/migrations)
+_TREND_PULSES = {"tiktok": TIKTOK_PULSE}
+_TREND_CLUSTERS = {"tiktok": list(TIKTOK_CLUSTERS)}
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+log = logging.getLogger("server")
+
+# Mongo
+client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+db = client[os.environ["DB_NAME"]]
+users_col = db["tf_users"]
+analyses_col = db["tf_analyses"]
+ratings_col = db["tf_script_ratings"]
+outcomes_col = db["tf_outcomes"]
+vault_col = db["tf_vault"]
+uploads_col = db["tf_uploads"]
+
+app = FastAPI(title="TrendFlowAI")
+api = APIRouter(prefix="/api")
+
+
+def _user_public(u: dict) -> dict:
+    if not u:
+        return {}
+    return {
+        "id": u["id"], "email": u["email"], "name": u.get("name", ""),
+        "niche": u.get("niche"), "brand_voice": u.get("brand_voice"),
+        "subscription_tier": u.get("subscription_tier", "free"),
+        "onboarded": u.get("onboarded", False),
+        "created_at": u.get("created_at"),
+    }
+
+
+def _analysis_public(a: dict) -> dict:
+    scorecard = a.get("scorecard") or {}
+    return {
+        "id": a["id"], "user_id": a["user_id"], "mode": a["mode"], "status": a["status"],
+        "progress": a.get("progress", 0), "error": a.get("error"),
+        "video_url": a.get("video_url"), "upload_id": a.get("upload_id"),
+        "platform": a.get("platform"),
+        "post_id": a.get("post_id"),
+        "title": a.get("title"), "description": a.get("description"),
+        "duration_sec": a.get("duration_sec"),
+        "outlier_multiplier": a.get("outlier_multiplier", 1.0),
+        "niche": a.get("niche"),
+        "perception": a.get("perception"), "scorecard": a.get("scorecard"),
+        "scripts": a.get("scripts", []), "alignment": a.get("alignment"),
+        "detected_angle": a.get("detected_angle") or scorecard.get("detected_angle"),
+        "trend_comparison": a.get("trend_comparison"),
+        "overall_score": a.get("overall_score", scorecard.get("composite")),
+        "band": a.get("band") or scorecard.get("band"),
+        "shared_slug": a.get("shared_slug"), "shared_at": a.get("shared_at"),
+        "sent_to_swarm_command": a.get("sent_to_swarm_command", False),
+        "created_at": a.get("created_at"), "updated_at": a.get("updated_at"),
+        "as_of": a.get("as_of"),
+    }
+
+
+def _analysis_public_view(a: dict) -> dict:
+    """Redacted public-facing view of an analysis. No user-identifying fields, no internal flags."""
+    perception = a.get("perception") or {}
+    return {
+        "id": a["id"],
+        "mode": a["mode"],
+        "title": a.get("title"),
+        "video_url": a.get("video_url"),
+        "platform": a.get("platform"),
+        "duration_sec": a.get("duration_sec"),
+        "niche": a.get("niche"),
+        "outlier_multiplier": a.get("outlier_multiplier", 1.0),
+        "perception": {"summary": perception.get("summary")},
+        "scorecard": a.get("scorecard"),
+        "scripts": a.get("scripts", []),
+        "alignment": a.get("alignment"),
+        "shared_at": a.get("shared_at"),
+        "created_at": a.get("created_at"),
+    }
+
+
+async def _update_analysis(analysis_id: str, **fields):
+    fields["updated_at"] = _now_iso()
+    await analyses_col.update_one({"id": analysis_id}, {"$set": fields})
+
+
+async def _acquire_video(a: dict, user_id: str, analysis_id: str) -> tuple[Optional[str], bool]:
+    """Resolve the analysis to a local video file path, if possible.
+
+    Returns (local_path, should_cleanup). `local_path=None` means we have no video file
+    and the pipeline should fall back to metadata-heuristic perception.
+    """
+    if a.get("upload_id"):
+        up = await uploads_col.find_one(
+            {"id": a["upload_id"], "user_id": user_id, "is_deleted": False}, {"_id": 0},
+        )
+        if not up:
+            return None, False
+        try:
+            data, _ = storage.get_object(up["storage_path"])
+            local_path = video_mod.save_bytes_to_tmp(data, ext=up.get("ext") or "mp4")
+            probed = video_mod.probe_duration(local_path)
+            if probed:
+                await _update_analysis(analysis_id, duration_sec=probed)
+            return local_path, True
+        except Exception as e:
+            log.warning(f"Upload fetch failed for analysis {analysis_id}: {e}")
+            return None, False
+
+    if a.get("video_url"):
+        await _update_analysis(analysis_id, status="downloading", progress=10)
+        local_path = video_mod.download_via_ytdlp(a["video_url"])
+        if not local_path:
+            log.info(f"yt-dlp could not fetch {a['video_url']}, using metadata heuristic")
+            return None, False
+        probed = video_mod.probe_duration(local_path)
+        if probed:
+            await _update_analysis(analysis_id, duration_sec=probed)
+        log.info(f"Downloaded video for analysis {analysis_id}: {local_path}")
+        return local_path, True
+
+    return None, False
+
+
+async def _run_perception_stage(analysis_id: str, a: dict, niche: str, video_path: Optional[str]) -> dict:
+    await _update_analysis(analysis_id, status="perceiving", progress=25)
+    perception = await llm.run_perception(
+        a.get("video_url"), a.get("title"), a.get("description"),
+        a.get("platform"), niche, a.get("duration_sec"),
+        video_path=video_path,
+    )
+    await _update_analysis(
+        analysis_id, perception=perception, progress=45,
+        duration_sec=perception.get("duration_sec") or a.get("duration_sec"),
+    )
+    return perception
+
+
+async def _run_scorecard_stage(analysis_id: str, perception: dict, niche: str) -> dict:
+    await _update_analysis(analysis_id, status="analyzing", progress=60)
+    scorecard = await llm.run_scorecard(perception, niche)
+    await _update_analysis(analysis_id, scorecard=scorecard, progress=75)
+    return scorecard
+
+
+async def _run_study_outputs(analysis_id: str, a: dict, user_id: str, niche: str,
+                             perception: dict, scorecard: dict, brand_voice: dict):
+    await _update_analysis(analysis_id, status="generating", progress=82)
+    scripts = await llm.run_scripts(perception, scorecard, niche, brand_voice)
+    await _update_analysis(analysis_id, scripts=scripts, progress=98)
+    await vault_col.insert_one({
+        "id": _uuid(), "user_id": user_id, "analysis_id": analysis_id,
+        "niche": niche, "title": a.get("title") or "Untitled",
+        "video_url": a.get("video_url"),
+        "summary": (scorecard or {}).get("summary", ""),
+        "composite": (scorecard or {}).get("composite", 0),
+        "created_at": _now_iso(),
+    })
+
+
+async def _ru
