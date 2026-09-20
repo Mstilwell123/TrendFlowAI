@@ -1,0 +1,36 @@
+            "as_of": top[0].get("as_of") if top else None,
+            "_source": "stub",
+        }
+
+    payload = {
+        "niche": niche or "general",
+        "detected_angle": scorecard.get("detected_angle"),
+        "composite": scorecard.get("composite"),
+        "components": scorecard.get("components", [])[:10],
+        "winning_clusters": [
+            {
+                "id": cl.get("id"),
+                "angle_label": cl.get("angle_label"),
+                "hook_archetype": cl.get("hook_archetype"),
+                "why_working": cl.get("why_working"),
+                "drivers": cl.get("drivers"),
+            }
+            for cl in clusters[:8]
+        ],
+    }
+    resp = await _reason_call(
+        c,
+        TREND_COMPARE_SYSTEM,
+        f"Pre-flight compare draft vs winners:\n{json.dumps(payload)[:10000]}",
+    )
+    data = _extract_json(resp)
+    data["as_of"] = clusters[0].get("as_of") if clusters else None
+    data["_source"] = c.reason_provider
+    return data
+
+
+# Back-compat aliases (tests / old call sites referencing module-level env)
+ANTHROPIC_API_KEY = _ENV_ANTHROPIC
+GEMINI_API_KEY = _ENV_GEMINI
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", DEFAULTS["perception_model"])
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", DEFAULTS["reason_model"])
