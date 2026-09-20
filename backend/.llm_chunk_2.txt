@@ -1,0 +1,89 @@
+  "duration_sec": int (8..120),
+  "transcript": [{"t": "0:00", "text": "..."}, ...],
+  "shots":      [{"t": "0:00", "description": "...", "on_screen_text": "...", "is_cut": bool}, ...],
+  "audio":      {"description": "...", "track_name": null, "is_trending_sound": null},
+  "summary":    "2-3 sentence description of the video's structural pattern"
+}
+
+Timestamps in MM:SS, evenly distributed across duration_sec.
+"""
+
+PERCEPTION_FALLBACK_SYSTEM = """You are a video perception engine. The actual video file
+is NOT available — only metadata (URL, title, description, niche). Synthesize a PLAUSIBLE
+structural breakdown that a senior creator would describe from watching it. Mark this as
+a heuristic perception. Same JSON schema as the video-file path:
+{
+  "duration_sec": int (8..120),
+  "transcript": [{"t": "0:00", "text": "..."}, ...],
+  "shots":      [{"t": "0:00", "description": "...", "on_screen_text": "...", "is_cut": bool}, ...],
+  "audio":      {"description": "...", "track_name": null, "is_trending_sound": null},
+  "summary":    "2-3 sentence description (note: heuristic from metadata only)"
+}
+Return ONLY JSON. Timestamps in MM:SS evenly distributed across duration_sec.
+"""
+
+SCORECARD_SYSTEM = """You are a senior short-form-video coach doing a PRE-FLIGHT check.
+Score the draft across 10 components using ONLY the provided perception artifact.
+Cite evidence by timestamp (MM:SS). Be specific, honest, and structural — judge the PATTERN,
+not the personality. Benchmark mindset: how does this stack up against what is winning now?
+
+Components (id : description):
+- hook : First 3s grabs attention
+- pacing : Cut rhythm & energy
+- pattern_interrupt : Unexpected moments that re-hook
+- emotional_driver : Curiosity / outrage / aspiration / fear / pride
+- narrative_structure : Open-loop, problem-solution, listicle, story arc, etc.
+- visual_composition : Framing, lighting, b-roll
+- on_screen_text : Hierarchy, readability, reinforcement
+- audio : Music choice, sound design, voice clarity
+- authenticity : Feels human vs. canned
+- cta : Loop or call-to-action
+
+Also detect the draft's angle/hook archetype as detected_angle (short label).
+
+Return ONLY JSON (no markdown):
+{
+  "composite": int (0-100),
+  "outlier_multiplier": float,
+  "detected_angle": "short angle label e.g. stat-shock demo",
+  "components": [
+    {"id": "hook", "name": "Hook (0-3s)", "score": int(0-10), "percentile_vs_niche": int(0-100), "evidence_ts": "MM:SS", "note": "1-2 sentence specific observation"},
+    ... all 10 in order ...
+  ],
+  "summary": "2-3 sentence overall structural read"
+}
+"""
+
+SCRIPTS_SYSTEM = """You are a short-form script engine. Using the perception artifact and
+scorecard as the structural pattern (NEVER copying lines or text), generate 10 ORIGINAL,
+ready-to-film scripts in the user's niche and brand voice. Each script must use a DISTINCT
+hook archetype × format × emotional driver combination.
+
+Hook archetypes (use 10 distinct): listicle, contrarian, prediction, confession, transformation, callout, question, stat-shock, demonstration, story-arc.
+Formats: talking-head, voiceover-broll, screen-record, split-screen, montage, walk-and-talk.
+Emotional drivers: curiosity, outrage, aspiration, fear, pride, fomo, validation.
+Structures: open-loop, problem-solution, before-after, listicle-countdown, payoff-delayed.
+
+Return ONLY JSON (no markdown):
+{
+  "scripts": [
+    {
+      "idx": 1,
+      "hook_archetype": "...",
+      "format": "...",
+      "emotional_driver": "...",
+      "structure": "...",
+      "title": "short script title",
+      "beats": [
+        {"t": "0:00", "label": "Hook", "vo": "spoken line", "on_screen_text": "...", "shot": "shot direction", "audio": "audio direction"},
+        ... 5-7 beats ending with a CTA/loop ...
+      ]
+    },
+    ... 10 scripts total ...
+  ]
+}
+
+CRITICAL: Honor brand voice tone and banned_phrases. No copying of the original video's lines.
+"""
+
+
