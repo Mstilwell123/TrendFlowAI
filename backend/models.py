@@ -24,6 +24,12 @@ class UserDoc(BaseModel):
     brand_voice: Optional[Dict[str, Any]] = None  # { tone, banned_phrases[], sample[] }
     subscription_tier: Literal["free", "creator", "pro", "agency"] = "free"
     onboarded: bool = False
+    # BYOK — stored on Mongo user doc (encrypted key ciphertext never returned publicly)
+    # ai_config: {
+    #   perception_provider, perception_model, reason_provider, reason_model,
+    #   perception_key_enc, reason_key_enc
+    # }
+    ai_config: Optional[Dict[str, Any]] = None
     created_at: str = Field(default_factory=_now_iso)
 
 
@@ -46,6 +52,38 @@ class TokenResponse(BaseModel):
 class ProfileBody(BaseModel):
     niche: str
     brand_voice: Dict[str, Any]  # { tone, banned_phrases, sample_lines }
+    # Only True after step 3 (Connect AI) has saved keys — never set by niche/brand alone.
+    complete_onboarding: bool = False
+
+
+# ---------------- BYOK AI config ---------------- #
+PerceptionProviderId = Literal["gemini"]
+ReasonProviderId = Literal["anthropic", "xai"]
+
+
+class AiProviderConfigPublic(BaseModel):
+    """Public AI config — never includes raw API keys."""
+    perception_provider: PerceptionProviderId = "gemini"
+    perception_model: str = "gemini-2.0-flash"
+    reason_provider: ReasonProviderId = "anthropic"
+    reason_model: str = "claude-sonnet-4-20250514"
+    has_perception_key: bool = False
+    has_reason_key: bool = False
+
+
+class AiConfigPutBody(BaseModel):
+    """PUT /ai-config — providers/models + optional new plaintext keys (encrypted at rest)."""
+    perception_provider: PerceptionProviderId = "gemini"
+    perception_model: str = "gemini-2.0-flash"
+    reason_provider: ReasonProviderId = "anthropic"
+    reason_model: str = "claude-sonnet-4-20250514"
+    perception_api_key: Optional[str] = None  # omit to keep existing
+    reason_api_key: Optional[str] = None
+
+
+class OnboardingCompleteBody(BaseModel):
+    """Optional body; completion requires ai keys already saved via PUT /ai-config."""
+    pass
 
 
 # ---------------- Analysis ---------------- #
