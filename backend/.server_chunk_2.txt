@@ -1,0 +1,207 @@
+("upload" if upload_doc else _infer_platform(body.video_url)),
+        title=body.title or (upload_doc.get("original_filename") if upload_doc else _title_from_url(body.video_url)),
+        description=body.description,
+        duration_sec=body.duration_sec,
+        niche=u.get("niche"),
+        status="queued", progress=5,
+    )
+    await analyses_col.insert_one(doc.model_dump())
+    bg.add_task(run_pipeline, doc.id, user_id)
+    return _analysis_public(doc.model_dump())
+
+
+@api.get("/analysis/{analysis_id}")
+async def get_analysis(analysis_id: str, user_id: str = CurrentUserId):
+    a = await analyses_col.find_one({"id": analysis_id, "user_id": user_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Not found")
+    return _analysis_public(a)
+
+
+@api.get("/analyses")
+async def list_analyses(user_id: str = CurrentUserId, mode: Optional[str] = None, limit: int = 50):
+    q: Dict[str, Any] = {"user_id": user_id}
+    if mode in ("study", "test"):
+        q["mode"] = mode
+    cur = analyses_col.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
+    items = [_analysis_public(a) for a in await cur.to_list(length=limit)]
+    return {"items": items}
+
+
+@api.post("/scripts/{script_id}/rate")
+async def rate_script(script_id: str, body: RateScriptBody, user_id: str = CurrentUserId):
+    doc = {
+        "id": _uuid(), "script_id": script_id, "user_id": user_id,
+        "scores": body.scores, "chosen": body.chosen,
+        "edited_final": body.edited_final, "created_at": _now_iso(),
+    }
+    await ratings_col.insert_one(doc)
+    return {"ok": True, "id": doc["id"]}
+
+
+@api.post("/outcomes")
+async def add_outcome(body: OutcomeBody, user_id: str = CurrentUserId):
+    doc = OutcomeDoc(
+        user_id=user_id, analysis_id=body.analysis_id, script_id=body.script_id,
+        platform=body.platform, views=body.views, retention=body.retention,
+        saves=body.saves, posted_at=body.posted_at,
+    )
+    await outcomes_col.insert_one(doc.model_dump())
+    return {"ok": True, "id": doc.id}
+
+
+@api.get("/outcomes")
+async def list_outcomes(user_id: str = CurrentUserId):
+    cur = outcomes_col.find({"user_id": user_id}, {"_id": 0}).sort("captured_at", -1).limit(100)
+    items = await cur.to_list(length=100)
+    return {"items": items}
+
+
+# ---------- Vault & Dashboard ----------
+@api.get("/vault")
+async def get_vault(user_id: str = CurrentUserId):
+    cur = vault_col.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(200)
+    items = await cur.to_list(length=200)
+    return {"items": items}
+
+
+@api.get("/dashboard/stats")
+async def dashboard_stats(user_id: str = CurrentUserId):
+    study_count = await analyses_col.count_documents({"user_id": user_id, "mode": "study"})
+    test_count = await analyses_col.count_documents({"user_id": user_id, "mode": "test"})
+    vault_count = await vault_col.count_documents({"user_id": user_id})
+    outcomes_count = await outcomes_col.count_documents({"user_id": user_id})
+
+    avg = 0
+    cur = analyses_col.find(
+        {"user_id": user_id, "mode": "test", "alignment": {"$ne": None}},
+        {"_id": 0, "alignment": 1},
+    ).limit(100)
+    items = await cur.to_list(length=100)
+    composites = [it["alignment"].get("composite", 0) for it in items if it.get("alignment")]
+    if composites:
+        avg = round(sum(composites) / len(composites))
+
+    return {
+        "study_count": study_count, "test_count": test_count,
+        "vault_count": vault_count, "outcomes_count": outcomes_count,
+        "avg_alignment": avg,
+    }
+
+
+@api.get("/")
+async def root():
+    return {"ok": True, "app": "TrendFlowAI", "version": "0.1"}
+
+
+# ---------- Sharing ----------
+def _generate_slug() -> str:
+    # 10-char URL-safe (~60 bits). Collisions are vanishingly rare; we retry on conflict.
+    return secrets.token_urlsafe(8)[:10]
+
+
+@api.post("/analysis/{analysis_id}/share")
+async def share_analysis(analysis_id: str, user_id: str = CurrentUserId):
+    a = await analyses_col.find_one({"id": analysis_id, "user_id": user_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Not found")
+    if a.get("status") != "done":
+        raise HTTPException(400, "Analysis must be complete before sharing")
+
+    existing_slug = a.get("shared_slug")
+    if existing_slug:
+        return {"slug": existing_slug, "shared_at": a.get("shared_at")}
+
+    for _ in range(5):
+        candidate = _generate_slug()
+        collision = await analyses_col.find_one({"shared_slug": candidate}, {"_id": 0})
+        if not collision:
+            shared_at = _now_iso()
+            await analyses_col.update_one(
+                {"id": analysis_id},
+                {"$set": {"shared_slug": candidate, "shared_at": shared_at, "updated_at": shared_at}},
+            )
+            return {"slug": candidate, "shared_at": shared_at}
+    raise HTTPException(500, "Could not generate unique slug")
+
+
+@api.post("/analysis/{analysis_id}/unshare")
+async def unshare_analysis(analysis_id: str, user_id: str = CurrentUserId):
+    a = await analyses_col.find_one({"id": analysis_id, "user_id": user_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Not found")
+    # $unset removes the field entirely so the partial-filter unique index doesn't index it.
+    await analyses_col.update_one(
+        {"id": analysis_id},
+        {
+            "$unset": {"shared_slug": "", "shared_at": ""},
+            "$set": {"updated_at": _now_iso()},
+        },
+    )
+    return {"ok": True}
+
+
+@api.get("/public/r/{slug}")
+async def get_public_report(slug: str):
+    a = await analyses_col.find_one({"shared_slug": slug, "status": "done"}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Report not found or no longer shared")
+    return _analysis_public_view(a)
+
+
+
+# ---------- Trend Intelligence (Phase 1 — TikTok deep; others stub) ----------
+@api.get("/trends/pulse")
+async def trends_pulse(platform: str = "tiktok"):
+    """Daily/near-daily pulse of currently winning videos for a platform menu."""
+    p = (platform or "tiktok").lower()
+    if p in PLATFORM_STUBS:
+        stub = PLATFORM_STUBS[p]
+        return {
+            "platform": p,
+            "status": "coming",
+            "lens": stub["lens"],
+            "message": stub["message"],
+            "pulse": None,
+            "as_of": None,
+        }
+    pulse = _TREND_PULSES.get(p)
+    if not pulse:
+        raise HTTPException(404, f"No pulse for platform={p}")
+    return {"platform": p, "status": "ready", "pulse": pulse, "as_of": pulse.get("as_of")}
+
+
+@api.get("/trends/clusters")
+async def trends_clusters(platform: str = "tiktok"):
+    p = (platform or "tiktok").lower()
+    if p in PLATFORM_STUBS:
+        stub = PLATFORM_STUBS[p]
+        return {
+            "platform": p,
+            "status": "coming",
+            "lens": stub["lens"],
+            "message": stub["message"],
+            "items": [],
+            "as_of": None,
+        }
+    items = _TREND_CLUSTERS.get(p, [])
+    return {
+        "platform": p,
+        "status": "ready",
+        "items": items,
+        "as_of": items[0].get("as_of") if items else None,
+    }
+
+
+@api.get("/trends/clusters/{cluster_id}")
+async def trend_cluster_detail(cluster_id: str):
+    for plat, items in _TREND_CLUSTERS.items():
+        for c in items:
+            if c["id"] == cluster_id:
+                return {**c, "platform": plat, "status": "ready"}
+    raise HTTPException(404, "Cluster not found")
+
+
+@api.get("/platforms")
+async def list_platforms():
+    """Desktop platform menu bar — each is a d
