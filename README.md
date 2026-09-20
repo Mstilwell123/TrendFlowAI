@@ -26,6 +26,22 @@ Domain: [trendflowai.ai](https://trendflowai.ai)
 | `POST /api/export/swarm-command` → 501 | Production deploy |
 | Supabase `001_init.sql` | IG/YT/FB deep engines |
 
+
+
+## BYOK — Connect your AI (product lock §3d)
+
+TrendFlow sells the **desk** (menus, rubrics, Trends, DNA, pre-flight UX). Users bring compute.
+
+1. Onboarding: Niche → Brand voice → **Connect your AI** (step 3)
+2. Recommended defaults (badged, not required): Gemini perception + Claude (or Grok) reason
+3. User free pickers either slot — **user choice always wins**
+4. Keys stored per-user, Fernet-encrypted; Study/Test never use shared Pragvance env keys in prod
+5. Errors: `"Your API key or quota failed"` / `"Connect your AI keys in Settings"`
+6. `onboarded: true` only after step 3 saves keys (`POST /onboarding/complete`)
+7. Same controls mirrored forever in **Settings → AI providers**
+
+Endpoints: `GET/PUT /api/ai-config`, `POST /api/onboarding/complete`. Profile niche/brand alone does **not** set onboarded.
+
 ## Repo layout
 
 ```
@@ -38,7 +54,10 @@ supabase/migrations/001_init.sql
 ### Key paths
 
 - `backend/server.py` — API + pipeline + `/api/trends/*` + export stub
-- `backend/llm.py` — Gemini perception + Claude reason (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`)
+- `backend/llm.py` — BYOK perception + reason (per-user encrypted keys; env keys = local smoke only)
+- `backend/crypto_keys.py` — Fernet encrypt/decrypt (`TRENDFLOW_KEY_ENCRYPTION_SECRET`)
+- `backend/providers/` — Gemini / Anthropic / xAI adapters
+- Onboarding step 3: `ConnectAIStep` + Settings `ConnectAIForm`
 - `backend/trends_seed.py` — sample TikTok clusters
 - `frontend/src/pages/PlatformAnalyze.jsx` — platform menu + mode tabs
 - `frontend/src/components/analyze/PlatformMenuBar.jsx`
@@ -50,7 +69,8 @@ supabase/migrations/001_init.sql
 ### Prerequisites
 
 - Python 3.11+, Node 18+, MongoDB (local bootstrap), yt-dlp on PATH optional
-- API keys: `ANTHROPIC_API_KEY` + `GEMINI_API_KEY` (analysis fails without them; Trends seed UI works without)
+- BYOK: set `TRENDFLOW_KEY_ENCRYPTION_SECRET`, then connect keys in onboarding step 3 / Settings
+- Local smoke only: `ALLOW_DEV_SHARED_LLM_KEYS=true` + env `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` (never for customer traffic)
 
 ### Backend
 
@@ -92,7 +112,7 @@ Apply `supabase/migrations/001_init.sql` in your Supabase project. Runtime A sti
 
 ## Band cutovers
 
-`loser` <40 · `baseline` 40–59 · `momentum` 60–79 · `winner` ≥80
+`loser` &lt;40 · `baseline` 40–59 · `momentum` 60–79 · `winner` ≥80
 
 ## Blockers / stubs
 
@@ -104,3 +124,23 @@ Apply `supabase/migrations/001_init.sql` in your Supabase project. Runtime A sti
 ## License
 
 Proprietary — Pragvance / Agent Swarm.
+
+## Product lock — BYOK / compute-agnostic (§3d, 2026-09-20)
+- TrendFlow sells the **desk** (menus, rubrics, Trends, DNA, pre-flight UX) — not bundled tokens.
+- Users bring their own LLM keys (perception + reason): Anthropic, Gemini, xAI/Grok adapters.
+- Per-user encrypted keys; clear errors when *their* quota fails.
+- Dev `.env` keys OK for local smoke only; **prod default path = user BYOK**.
+- Hosted credits tier = optional later, not MVP.
+- Engineering: `PerceptionProvider` / `ReasonProvider` interfaces — wire in Settings/onboarding on shell-pages pass.
+
+### Model choice (LOCKED with BYOK)
+- UI recommends a strong default pair (e.g. Gemini perception + Claude or Grok reason) labeled **Recommended**.
+- Every user picks their own favorites in Settings — **never force a model; user choice always wins**.
+
+### Onboarding BYOK step (shipped in this PR)
+**Required before `onboarded: true`:** Niche → Brand voice → Step 3 **Connect your AI**
+- Pre-select Recommended (Gemini perception + Claude or Grok reason); user can change either slot
+- Collect matching API keys; store per-user encrypted (`PUT /api/ai-config`)
+- Mirror same controls in Settings → AI providers
+- Study/Test resolve user keys first; auth/quota → "Your API key or quota failed"
+- Never shared Pragvance env keys for customer traffic (`ALLOW_DEV_SHARED_LLM_KEYS` = local smoke only)
