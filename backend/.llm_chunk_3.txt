@@ -1,0 +1,115 @@
+ALIGNMENT_SYSTEM = """You are a video coach doing a PRE-FLIGHT check. Given the user's draft
+perception artifact and its scorecard, produce an Alignment Score and a Good/Bad/Ugly
+breakdown with concrete fixes, each tied to a timestamp — before they publish.
+
+Bands (legacy alignment labels; overall band uses loser/baseline/momentum/winner separately):
+- 85-100: "Viral-ready"
+- 70-84:  "Strong"
+- 50-69:  "Promising"
+- 30-49:  "Needs work"
+- 0-29:   "Rework"
+
+Return ONLY JSON (no markdown):
+{
+  "composite": int (0-100),
+  "band": "string",
+  "good": [{"component": "hook", "note": "what's working, with MM:SS"}],
+  "bad":  [{"component": "pacing", "fix": "specific change to make, with MM:SS"}],
+  "ugly": [{"component": "cta", "fix": "highest-leverage fix with MM:SS"}]
+}
+"""
+
+TREND_COMPARE_SYSTEM = """You compare a creator's draft angle to currently winning trend clusters.
+Return ONLY JSON:
+{
+  "matched_clusters": [{"cluster_id": "...", "angle_label": "...", "similarity": 0-100, "note": "..."}],
+  "gaps": ["concrete gap vs winners", ...],
+  "preflight_vs_winners": "2-4 sentence pre-flight summary: how this draft stacks up against today's winners"
+}
+Prefer winners/rising clusters — never flop-only benchmarking.
+"""
+
+
+
+def _extract_json(text: str) -> dict:
+    if not text:
+        raise ValueError("Empty LLM response")
+    text = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE | re.MULTILINE)
+    text = re.sub(r"\s*```\s*$", "", text.strip(), flags=re.MULTILINE)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end < 0:
+        raise ValueError(f"No JSON object in response: {text[:200]}")
+    return json.loads(text[start : end + 1])
+
+
+def _band_from_score(score: float) -> str:
+    if score < 40:
+        return "loser"
+    if score < 60:
+        return "baseline"
+    if score < 80:
+        return "momentum"
+    return "winner"
+
+
+async def _perceive_from_video(creds: LLMCredentials, video_path: str, niche: Optional[str]) -> Optional[Dict[str, Any]]:
+    try:
+        resp = await _perceive_call(
+            creds,
+            PERCEPTION_SYSTEM,
+            f"Watch this short-form video (niche: {niche or 'general'}) and produce the perception artifact JSON.",
+            video_path=video_path,
+        )
+        artifact = _extract_json(resp)
+        artifact["_source"] = "video_file"
+        return artifact
+    except (UserProviderError, MissingUserKeysError):
+        raise
+    except Exception as e:
+        log.warning(f"Real-video perception failed, falling back to heuristic: {e}")
+        return None
+
+
+async def _perceive_from_metadata(
+    creds: LLMCredentials,
+    video_url: Optional[str],
+    title: Optional[str],
+    description: Optional[str],
+    platform: Optional[str],
+    niche: Optional[str],
+    duration_sec: Optional[int],
+) -> Dict[str, Any]:
+    payload = {
+        "video_url": video_url or "(uploaded draft)",
+        "platform": platform or "unknown",
+        "title": title or "(no title provided)",
+        "description": description or "(no description)",
+        "niche": niche or "general",
+        "estimated_duration_sec": duration_sec or 45,
+    }
+    resp = await _perceive_call(
+        creds,
+        PERCEPTION_FALLBACK_SYSTEM,
+        f"Synthesize the perception artifact for this video:\n{json.dumps(payload, indent=2)}",
+    )
+    artifact = _extract_json(resp)
+    artifact["_source"] = "metadata_heuristic"
+    return artifact
+
+
+async def run_perception(
+    video_url: Optional[str],
+    title: Optional[str],
+    description: Optional[str],
+    platform: Optional[str],
+    niche: Optional[str],
+    duration_sec: Optional[int],
+    video_path: Optional[str] = None,
+    creds: Optional[LLMCredentials] = None,
+    user: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    c = creds or resolve_credentials(user)
+    if video_path and os.path.exists(video_path):
+        artifact = await _perceive_from_video(c, video_path, niche)
+        if artifact:
