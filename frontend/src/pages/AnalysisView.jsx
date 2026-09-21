@@ -9,6 +9,7 @@ import AlignmentBreakdown from "../components/analysis/AlignmentBreakdown";
 import AnalysisHeader, { AnalysisFailed, BackLink } from "../components/analysis/AnalysisHeader";
 import ScorecardOverview from "../components/analysis/ScorecardOverview";
 import AngleVsTrend from "../components/trends/AngleVsTrend";
+import FixTheseFirst from "../components/analysis/FixTheseFirst";
 
 const POLL_INTERVAL_MS = 2500;
 const TERMINAL_STATUSES = ["done", "failed"];
@@ -67,17 +68,18 @@ function LoadingView() {
   );
 }
 
-function TestModeActions() {
+function TestModeActions({ platform = "youtube" }) {
+  const base = platform === "youtube" ? "youtube" : (platform || "tiktok");
   return (
     <div className="mt-10 flex flex-col sm:flex-row gap-3" data-testid="alignment-actions">
       <Link
-        to="/app/tiktok/test"
+        to={`/app/${base}/test`}
         className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-black font-medium px-5 py-3 rounded-sm"
         data-testid="retest-btn"
       >
         <Check size={16} /> Re-test after edit
       </Link>
-      <Link to="/app/tiktok/study" className="inline-flex items-center gap-2 border border-neutral-800 hover:border-neutral-600 text-white px-5 py-3 rounded-sm">
+      <Link to={`/app/${base}/study`} className="inline-flex items-center gap-2 border border-neutral-800 hover:border-neutral-600 text-white px-5 py-3 rounded-sm">
         Study a similar viral
       </Link>
     </div>
@@ -128,14 +130,15 @@ export default function AnalysisView() {
       {inFlight && <AnalysisProgress status={a.status} progress={a.progress} />}
       {a.status === "failed" && <AnalysisFailed error={a.error} />}
       <ScorecardOverview analysis={a} />
-      <ComponentsTable components={a.scorecard?.components} />
+      <FixTheseFirst components={a.scorecard?.components} platform={a.platform} />
+      <ComponentsTable components={a.scorecard?.components} platform={a.platform} />
       {a.mode === "test" && a.alignment && <AlignmentBreakdown alignment={a.alignment} />}
       {a.mode === "study" && <ScriptsList scripts={a.scripts} />}
       {a.status === "done" && (
         <AngleVsTrend comparison={a.trend_comparison} detectedAngle={a.detected_angle} />
       )}
       {a.status === "done" && <SwarmExportStub analysisId={a.id} />}
-      {a.mode === "test" && a.status === "done" && <TestModeActions />}
+      {a.mode === "test" && a.status === "done" && <TestModeActions platform={a.platform} />}
     </div>
   );
 }
