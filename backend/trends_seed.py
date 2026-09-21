@@ -96,11 +96,41 @@ TIKTOK_CLUSTERS = [
     },
 ]
 
-PLATFORM_STUBS = {
-    "youtube": {
-        "lens": "Shorts search title + swipe-away; long-form retention later",
-        "message": "YouTube Analyze engine coming — distinct Shorts rubric (not TikTok FYP).",
+YOUTUBE_PULSE = {
+    "id": "pulse-yt-seed-001",
+    "platform": "youtube",
+    "niche": "general",
+    "fetched_at": AS_OF,
+    "as_of": AS_OF,
+    "videos": [
+        {"id": "ytv1", "title": "Stop scrolling — 1 tip that fixed my Shorts CTR", "views": 1_800_000, "saves": 95_000},
+        {"id": "ytv2", "title": "I tested 3 covers before uploading", "views": 920_000, "saves": 61_000},
+        {"id": "ytv3", "title": "15s version beat my 60s cut", "views": 1_200_000, "saves": 88_000},
+    ],
+}
+
+YOUTUBE_CLUSTERS = [
+    {
+        "id": "cluster-yt-title-cover",
+        "pulse_id": "pulse-yt-seed-001",
+        "platform": "youtube",
+        "angle_label": "Title + cover congruence",
+        "hook_archetype": "search-intent",
+        "member_video_ids": ["ytv1", "ytv2"],
+        "why_working": {
+            "hook_pattern": "Title mirrors first on-screen promise; cover face + ≤5 words",
+            "pacing_tells": "Payoff before midpoint; hard cut on swipe risk",
+            "emotional_driver": "curiosity",
+            "cta_loop": "One end CTA — subscribe or next Short",
+            "save_share_drivers": ["checklist frames", "cover A/B proof"],
+            "evidence_ts": ["0:00", "0:03", "0:12"],
+        },
+        "drivers": {"saves": "high", "shares": "medium", "completion": "high"},
+        "as_of": AS_OF,
     },
+]
+
+PLATFORM_STUBS = {
     "instagram": {
         "lens": "Reels saves/shares, cover frame, carousel slide-one",
         "message": "Instagram Analyze engine coming — Reels-native Trends & scoring.",

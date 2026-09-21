@@ -14,7 +14,7 @@ Domain: [trendflowai.ai](https://trendflowai.ai)
    - Each menu is a **distinct curation/scoring engine** (platform-native trends + rubrics).
    - **Not** one shared analyzer with a platform dropdown.
    - Inside each menu: **Study | Test | Trends** (scoped to that platform).
-   - Phase 1: deep **TikTok** only; YouTube / Instagram / Facebook = platform-native empty/coming shells.
+   - **v1 product lock (2026-09-20):** deep **YouTube Shorts** pre-flight scorecard; TikTok remains in-tree; Instagram / Facebook = coming stubs.
 
 ## Phase 0–1 scope
 
@@ -105,7 +105,7 @@ Apply `supabase/migrations/001_init.sql` in your Supabase project. Runtime A sti
 |--------|------|-------|
 | POST | `/api/analyze` | Study (URL) or Test (upload_id); `platform=tiktok` |
 | GET | `/api/analysis/:id` | Includes `trend_comparison`, `detected_angle`, `band` |
-| GET | `/api/trends/pulse?platform=` | TikTok ready; others `status=coming` |
+| GET | `/api/trends/pulse?platform=` | TikTok + YouTube Shorts ready; IG/FB `status=coming` |
 | GET | `/api/trends/clusters?platform=` | Seeded TikTok angle clusters |
 | GET | `/api/platforms` | Menu metadata |
 | POST | `/api/export/swarm-command` | **501** stub until Command is live |
@@ -118,7 +118,7 @@ Apply `supabase/migrations/001_init.sql` in your Supabase project. Runtime A sti
 
 - Without LLM keys, Study/Test pipeline errors; Trends UI uses seeded clusters.
 - Swarm Command export returns 501 with a clear message.
-- YouTube / Instagram / Facebook menus are intentional stubs (distinct engines TBD).
+- Instagram / Facebook menus are intentional stubs. YouTube Shorts pre-flight is live (Test hero / Study support / thin Trends).
 - Creator DNA / night briefs: Settings shell only in this PR.
 
 ## License
@@ -144,3 +144,11 @@ Proprietary — Pragvance / Agent Swarm.
 - Mirror same controls in Settings → AI providers
 - Study/Test resolve user keys first; auth/quota → "Your API key or quota failed"
 - Never shared Pragvance env keys for customer traffic (`ALLOW_DEV_SHARED_LLM_KEYS` = local smoke only)
+
+
+## Product lock — YouTube Shorts v1 (Geneis one-pager, 2026-09-20)
+- **Platform:** YouTube Shorts ONLY for v1 hero job (pre-flight before upload).
+- **Modes:** Test = hero; Study = support; Trends = thin helper.
+- **Rubric:** 10 Shorts-native fields scored 1–5; show total + weakest 2 (fix-these-first).
+- Adapt TikTok UI kit; Shorts field names win. TikTok scoring out of v1 product scope.
+- No Vercel until Mark OK’s. No IG/FB engines in this slice.
