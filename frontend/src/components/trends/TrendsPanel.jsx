@@ -63,11 +63,15 @@ export default function TrendsPanel({ platform = "tiktok" }) {
       <div className="flex flex-wrap items-center gap-4 justify-between">
         <div>
           <div className="text-xs uppercase tracking-widest text-yellow-500 mb-1 flex items-center gap-2">
-            <Flame size={12} /> TikTok Trend Intelligence
+            <Flame size={12} /> {platform === "youtube" ? "Shorts Trends (helper)" : "TikTok Trend Intelligence"}
           </div>
-          <h2 className="text-2xl font-bold tracking-tight">What’s winning right now</h2>
+          <h2 className="text-2xl font-bold tracking-tight">
+            {platform === "youtube" ? "Optional Shorts context" : "What’s winning right now"}
+          </h2>
           <p className="text-neutral-400 text-sm mt-1 max-w-2xl">
-            Pre-flight benchmarks use <span className="text-neutral-200">currently viral / high-performing</span> clips — not flop post-mortems.
+            {platform === "youtube"
+              ? "Thin helper only — Test is the hero. Use this for format/topic context, not as the main job."
+              : <>Pre-flight benchmarks use <span className="text-neutral-200">currently viral / high-performing</span> clips — not flop post-mortems.</>}
           </p>
         </div>
         {meta.as_of && (

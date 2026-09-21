@@ -187,6 +187,20 @@ COMPONENTS = [
     {"id": "cta", "name": "CTA & Loop", "weight": 0.08},
 ]
 
+# YouTube Shorts v1 pre-flight rubric (Geneis one-pager). Equal weight; scores 1–5.
+SHORTS_COMPONENTS = [
+    {"id": "hook_strength", "name": "Hook Strength (0–3s)", "weight": 0.10},
+    {"id": "first_seconds", "name": "First 1–3 Seconds (pattern interrupt)", "weight": 0.10},
+    {"id": "title_fit", "name": "Title Fit", "weight": 0.10},
+    {"id": "cover_frame", "name": "Cover Frame (thumbnail)", "weight": 0.10},
+    {"id": "retention_risk", "name": "Retention Risk", "weight": 0.10},
+    {"id": "length_fit", "name": "Length Fit (Shorts)", "weight": 0.10},
+    {"id": "audio_clarity", "name": "Audio Clarity", "weight": 0.10},
+    {"id": "onscreen_text_clarity", "name": "On-Screen Text Clarity", "weight": 0.10},
+    {"id": "cta_clarity", "name": "CTA Clarity", "weight": 0.10},
+    {"id": "trend_angle_fit", "name": "Trend Angle Fit", "weight": 0.10, "optional_na": True},
+]
+
 TIERS = [
     {
         "id": "free",
