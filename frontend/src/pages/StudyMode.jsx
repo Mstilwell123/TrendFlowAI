@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { Search, Loader2, Link as LinkIcon } from "lucide-react";
+import { isShortsPlatform } from "../lib/shortsRubric";
 
 export default function StudyMode({ embedded = false, platform = "tiktok" } = {}) {
   const nav = useNavigate();
@@ -11,6 +12,7 @@ export default function StudyMode({ embedded = false, platform = "tiktok" } = {}
   const [duration, setDuration] = useState(30);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const shorts = isShortsPlatform(platform);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -50,9 +52,13 @@ export default function StudyMode({ embedded = false, platform = "tiktok" } = {}
       )}
       {embedded && (
         <div className="mb-6">
-          <h2 className="text-xl font-bold tracking-tight">Study · {platform}</h2>
+          <h2 className="text-xl font-bold tracking-tight">
+            {shorts ? "Study · YouTube Shorts" : `Study · ${platform}`}
+          </h2>
           <p className="text-neutral-400 text-sm mt-1">
-            Paste a TikTok URL. Pre-flight teardown + 10 scripts, benchmarked vs today’s winners.
+            {shorts
+              ? "Paste a reference Short URL to learn the Shorts pre-flight rubric (support mode — Test is the hero)."
+              : "Paste a TikTok URL. Pre-flight teardown + 10 scripts, benchmarked vs today’s winners."}
           </p>
         </div>
       )}
@@ -113,7 +119,7 @@ export default function StudyMode({ embedded = false, platform = "tiktok" } = {}
         <div className="text-xs uppercase tracking-widest text-neutral-500 mb-3">How it works</div>
         <ol className="space-y-2 text-sm text-neutral-300">
           <li><span className="mono text-yellow-500 mr-2">01</span> Perception (Gemini) — extracts shots, transcript, audio cues, on-screen text.</li>
-          <li><span className="mono text-yellow-500 mr-2">02</span> Component scoring (Claude) — judges the 10 structural levers with timestamp evidence.</li>
+          <li><span className="mono text-yellow-500 mr-2">02</span> Component scoring (Claude) — judges the 10 Shorts/structural levers with timestamp evidence.</li>
           <li><span className="mono text-yellow-500 mr-2">03</span> Script engine — 10 ready-to-film scripts, each a distinct hook × format × driver, in your voice.</li>
         </ol>
       </div>
