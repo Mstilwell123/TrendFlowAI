@@ -1,0 +1,24 @@
+# TrendFlow / TrendFlowAI
+
+> Most tools sell post-mortem. TrendFlow sells the pre-flight check.
+
+Desktop-first YouTube Shorts pre-flight analyzer for creators (Agent Swarm by Pragvance channel, ~$10/mo).
+
+## Product
+- Pre-flight scorecard for draft YouTube Shorts before upload
+- Modes: Study | Test | Trends
+- Stack: FastAPI + React, Supabase, Claude + Gemini
+- v1 lock: YouTube Shorts only (TikTok expansion held)
+
+## Not
+- Not YouTube Studio replacement / post-publish analytics suite
+- Not a cold multi-platform viral suite launch
+- No fake metrics or guaranteed virality claims
+
+## Links
+- Repo: https://github.com/Mstilwell123/TrendFlowAI
+- Classroom channel: https://www.skool.com/agentswarmbypragvance
+- Parent: Pragvance (https://www.pragvance.ai)
+
+## Canonical domain
+Placeholder: https://trendflow.ai/ — replace when production domain is locked.
