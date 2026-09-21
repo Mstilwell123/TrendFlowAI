@@ -1,0 +1,100 @@
+        raise
+    except Exception as e:
+        log.warning(f"Real-video perception failed, falling back to heuristic: {e}")
+        return None
+
+
+async def _perceive_from_metadata(
+    creds: LLMCredentials,
+    video_url: Optional[str],
+    title: Optional[str],
+    description: Optional[str],
+    platform: Optional[str],
+    niche: Optional[str],
+    duration_sec: Optional[int],
+) -> Dict[str, Any]:
+    payload = {
+        "video_url": video_url or "(uploaded draft)",
+        "platform": platform or "unknown",
+        "title": title or "(no title provided)",
+        "description": description or "(no description)",
+        "niche": niche or "general",
+        "estimated_duration_sec": duration_sec or 45,
+    }
+    resp = await _perceive_call(
+        creds,
+        PERCEPTION_FALLBACK_SYSTEM,
+        f"Synthesize the perception artifact for this video:\n{json.dumps(payload, indent=2)}",
+    )
+    artifact = _extract_json(resp)
+    artifact["_source"] = "metadata_heuristic"
+    return artifact
+
+
+async def run_perception(
+    video_url: Optional[str],
+    title: Optional[str],
+    description: Optional[str],
+    platform: Optional[str],
+    niche: Optional[str],
+    duration_sec: Optional[int],
+    video_path: Optional[str] = None,
+    creds: Optional[LLMCredentials] = None,
+    user: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    c = creds or resolve_credentials(user)
+    if video_path and os.path.exists(video_path):
+        artifact = await _perceive_from_video(c, video_path, niche)
+        if artifact:
+            return artifact
+    return await _perceive_from_metadata(c, video_url, title, description, platform, niche, duration_sec)
+
+
+async def run_scorecard(
+    perception: Dict[str, Any],
+    niche: Optional[str],
+    creds: Optional[LLMCredentials] = None,
+    user: Optional[Dict[str, Any]] = None,
+    platform: Optional[str] = None,
+) -> Dict[str, Any]:
+    c = creds or resolve_credentials(user)
+    payload = {"niche": niche or "general", "perception": perception, "platform": platform or "tiktok"}
+    system = SCORECARD_SHORTS_SYSTEM if (platform or "").lower() == "youtube" else SCORECARD_SYSTEM
+    label = "Short" if (platform or "").lower() == "youtube" else "video"
+    resp = await _reason_call(
+        c,
+        system,
+        f"Score this {label}:\n{json.dumps(payload)[:8000]}",
+    )
+    data = _extract_json(resp)
+    composite = float(data.get("composite") or 0)
+    data["band"] = _band_from_score(composite)
+    if (platform or "").lower() == "youtube":
+        data.setdefault("rubric", "shorts_v1")
+    return data
+
+
+async def run_scripts(
+    perception: Dict[str, Any],
+    scorecard: Dict[str, Any],
+    niche: Optional[str],
+    brand_voice: Optional[Dict[str, Any]],
+    creds: Optional[LLMCredentials] = None,
+    user: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    c = creds or resolve_credentials(user)
+    payload = {
+        "niche": niche or "general",
+        "brand_voice": brand_voice
+        or {"tone": "confident, conversational", "banned_phrases": [], "sample_lines": []},
+        "perception_summary": perception.get("summary", ""),
+        "scorecard_summary": scorecard.get("summary", ""),
+        "top_components": [x for x in scorecard.get("components", []) if x.get("score", 0) >= 7][:5],
+    }
+    resp = await _reason_call(
+        c,
+        SCRIPTS_SYSTEM,
+        f"Generate 10 scripts honoring this brand:\n{json.dumps(payload)[:8000]}",
+    )
+    data = _extract_json(resp)
+    scripts = data.get("scripts", [])
