@@ -100,7 +100,7 @@ export default function TestMode({ embedded = false, platform = "tiktok" } = {})
           </div>
         )}
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          {shorts ? "Pre-flight your Short before upload." : "Test your draft before you post."}
+          {shorts ? "YouTube Shorts analyzer — pre-flight before upload." : "Test your draft before you post."}
         </h1>
         <p className="text-neutral-400 mt-3 max-w-2xl">
           {shorts

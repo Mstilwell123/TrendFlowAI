@@ -4,6 +4,7 @@ import LandingHero from "../components/landing/LandingHero";
 import LandingHowItWorks from "../components/landing/LandingHowItWorks";
 import LandingComponentsGrid from "../components/landing/LandingComponentsGrid";
 import { LandingPricing, LandingFinalCTA, LandingFooter } from "../components/landing/LandingPricing";
+import LandingFAQ from "../components/seo/LandingFAQ";
 
 export default function Landing() {
   return (
@@ -12,6 +13,7 @@ export default function Landing() {
       <LandingHero />
       <LandingHowItWorks />
       <LandingComponentsGrid />
+      <LandingFAQ />
       <LandingPricing />
       <LandingFinalCTA />
       <LandingFooter />
