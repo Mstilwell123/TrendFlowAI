@@ -1,3 +1,36 @@
+
+SCRIPTS_SYSTEM = """You are a short-form script engine. Using the perception artifact and
+scorecard as the structural pattern (NEVER copying lines or text), generate 10 ORIGINAL,
+ready-to-film scripts in the user's niche and brand voice. Each script must use a DISTINCT
+hook archetype × format × emotional driver combination.
+
+Hook archetypes (use 10 distinct): listicle, contrarian, prediction, confession, transformation, callout, question, stat-shock, demonstration, story-arc.
+Formats: talking-head, voiceover-broll, screen-record, split-screen, montage, walk-and-talk.
+Emotional drivers: curiosity, outrage, aspiration, fear, pride, fomo, validation.
+Structures: open-loop, problem-solution, before-after, listicle-countdown, payoff-delayed.
+
+Return ONLY JSON (no markdown):
+{
+  "scripts": [
+    {
+      "idx": 1,
+      "hook_archetype": "...",
+      "format": "...",
+      "emotional_driver": "...",
+      "structure": "...",
+      "title": "short script title",
+      "beats": [
+        {"t": "0:00", "label": "Hook", "vo": "spoken line", "on_screen_text": "...", "shot": "shot direction", "audio": "audio direction"},
+        ... 5-7 beats ending with a CTA/loop ...
+      ]
+    },
+    ... 10 scripts total ...
+  ]
+}
+
+CRITICAL: Honor brand voice tone and banned_phrases. No copying of the original video's lines.
+"""
+
 ALIGNMENT_SYSTEM = """You are a video coach doing a PRE-FLIGHT check. Given the user's draft
 perception artifact and its scorecard, produce an Alignment Score and a Good/Bad/Ugly
 breakdown with concrete fixes, each tied to a timestamp — before they publish.
@@ -65,51 +98,3 @@ async def _perceive_from_video(creds: LLMCredentials, video_path: str, niche: Op
         artifact["_source"] = "video_file"
         return artifact
     except (UserProviderError, MissingUserKeysError):
-        raise
-    except Exception as e:
-        log.warning(f"Real-video perception failed, falling back to heuristic: {e}")
-        return None
-
-
-async def _perceive_from_metadata(
-    creds: LLMCredentials,
-    video_url: Optional[str],
-    title: Optional[str],
-    description: Optional[str],
-    platform: Optional[str],
-    niche: Optional[str],
-    duration_sec: Optional[int],
-) -> Dict[str, Any]:
-    payload = {
-        "video_url": video_url or "(uploaded draft)",
-        "platform": platform or "unknown",
-        "title": title or "(no title provided)",
-        "description": description or "(no description)",
-        "niche": niche or "general",
-        "estimated_duration_sec": duration_sec or 45,
-    }
-    resp = await _perceive_call(
-        creds,
-        PERCEPTION_FALLBACK_SYSTEM,
-        f"Synthesize the perception artifact for this video:\n{json.dumps(payload, indent=2)}",
-    )
-    artifact = _extract_json(resp)
-    artifact["_source"] = "metadata_heuristic"
-    return artifact
-
-
-async def run_perception(
-    video_url: Optional[str],
-    title: Optional[str],
-    description: Optional[str],
-    platform: Optional[str],
-    niche: Optional[str],
-    duration_sec: Optional[int],
-    video_path: Optional[str] = None,
-    creds: Optional[LLMCredentials] = None,
-    user: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    c = creds or resolve_credentials(user)
-    if video_path and os.path.exists(video_path):
-        artifact = await _perceive_from_video(c, video_path, niche)
-        if artifact:
