@@ -7,7 +7,7 @@ const ACTIONS = [
     to: "/app/youtube/test",
     icon: Target,
     testid: "quick-test-card",
-    title: "Test your Short",
+    title: "Test a Short",
     body: "Hero mode — upload your draft Short, get the 10-field pre-flight + fix-these-first.",
     cta: "Open Test",
   },
