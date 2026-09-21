@@ -6,7 +6,7 @@ import Logo from "./Logo";
 
 const NAV = [
   { to: "/app", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard", end: true },
-  { to: "/app/tiktok/study", label: "Analyze", icon: Clapperboard, testid: "nav-analyze", matchPrefix: "/app/tiktok|/app/youtube|/app/instagram|/app/facebook" },
+  { to: "/app/youtube/test", label: "Analyze", icon: Clapperboard, testid: "nav-analyze", matchPrefix: "/app/tiktok|/app/youtube|/app/instagram|/app/facebook" },
   { to: "/app/vault", label: "Vault", icon: FolderOpen, testid: "nav-vault" },
   { to: "/app/settings", label: "DNA / Settings", icon: Dna, testid: "nav-settings" },
 ];
@@ -62,7 +62,8 @@ function SidebarNav({ pathname, onNavigate }) {
       </div>
       {["tiktok", "youtube", "instagram", "facebook"].map((plat) => {
         const label = plat[0].toUpperCase() + plat.slice(1);
-        const to = `/app/${plat}/study`;
+        const ready = plat === "tiktok" || plat === "youtube";
+        const to = plat === "youtube" ? `/app/${plat}/test` : `/app/${plat}/study`;
         const active = pathname.startsWith(`/app/${plat}`);
         return (
           <Link
@@ -76,7 +77,7 @@ function SidebarNav({ pathname, onNavigate }) {
           >
             <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
             {label}
-            {plat !== "tiktok" && <span className="text-neutral-700 ml-auto">soon</span>}
+            {!ready && <span className="text-neutral-700 ml-auto">soon</span>}
           </Link>
         );
       })}
