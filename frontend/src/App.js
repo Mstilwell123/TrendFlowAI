@@ -52,10 +52,10 @@ function App() {
               <Route index element={<Dashboard />} />
               {/* Desktop platform menu: TikTok | YouTube | Instagram | Facebook */}
               <Route path=":platform/:mode" element={<PlatformAnalyze />} />
-              <Route path="analyze" element={<Navigate to="/app/tiktok/study" replace />} />
+              <Route path="analyze" element={<Navigate to="/app/youtube/test" replace />} />
               {/* Legacy redirects */}
-              <Route path="study" element={<Navigate to="/app/tiktok/study" replace />} />
-              <Route path="test" element={<Navigate to="/app/tiktok/test" replace />} />
+              <Route path="study" element={<Navigate to="/app/youtube/test" replace />} />
+              <Route path="test" element={<Navigate to="/app/youtube/test" replace />} />
               <Route path="vault" element={<Vault />} />
               <Route path="settings" element={<Settings />} />
               <Route path="analysis/:id" element={<AnalysisView />} />
