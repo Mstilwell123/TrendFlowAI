@@ -1,8 +1,0 @@
-        )
-    except Exception as e:
-        log.warning(f"Index create on shared_slug failed: {e}")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    client.close()
