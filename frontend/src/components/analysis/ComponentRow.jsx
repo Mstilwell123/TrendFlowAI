@@ -1,12 +1,18 @@
 import React from "react";
 
-const SCORE_COLOR = (s) =>
-  s >= 8 ? "text-green-400" :
-  s >= 6 ? "text-lime-400" :
-  s >= 4 ? "text-yellow-500" :
-  s >= 2 ? "text-orange-400" : "text-red-400";
+const SCORE_COLOR = (s, max = 10) => {
+  const n = Number(s);
+  if (Number.isNaN(n)) return "text-neutral-400";
+  const ratio = n / max;
+  if (ratio >= 0.8) return "text-green-400";
+  if (ratio >= 0.6) return "text-lime-400";
+  if (ratio >= 0.4) return "text-yellow-500";
+  if (ratio >= 0.2) return "text-orange-400";
+  return "text-red-400";
+};
 
-export default function ComponentRow({ c }) {
+export default function ComponentRow({ c, scoreMax = 10 }) {
+  const isNa = c.score === "N/A" || c.score == null;
   return (
     <div className="grid grid-cols-12 gap-3 py-3 border-b border-neutral-900 items-start" data-testid={`comp-${c.id}`}>
       <div className="col-span-12 sm:col-span-4">
@@ -14,8 +20,10 @@ export default function ComponentRow({ c }) {
         <div className="text-xs mono text-neutral-500 mt-1">{c.evidence_ts || "—"}</div>
       </div>
       <div className="col-span-3 sm:col-span-1 flex flex-col items-start">
-        <div className={`text-2xl font-bold ${SCORE_COLOR(c.score)}`}>{c.score}</div>
-        <div className="text-xs text-neutral-500">/10</div>
+        <div className={`text-2xl font-bold ${isNa ? "text-neutral-500" : SCORE_COLOR(c.score, scoreMax)}`}>
+          {isNa ? "N/A" : c.score}
+        </div>
+        {!isNa && <div className="text-xs text-neutral-500">/{scoreMax}</div>}
       </div>
       <div className="col-span-9 sm:col-span-2 flex items-center">
         <div className="w-full">
