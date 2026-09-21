@@ -4,6 +4,7 @@ import { Target, Loader2 } from "lucide-react";
 import api from "../lib/api";
 import TestUploadZone, { MAX_MB } from "../components/test/TestUploadZone";
 import TestMetadataForm from "../components/test/TestMetadataForm";
+import { isShortsPlatform } from "../lib/shortsRubric";
 
 function useFileUpload(setTitleIfEmpty) {
   const [file, setFile] = useState(null);
@@ -62,6 +63,7 @@ export default function TestMode({ embedded = false, platform = "tiktok" } = {})
   const [duration, setDuration] = useState(30);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const shorts = isShortsPlatform(platform);
 
   const setTitleIfEmpty = (t) => setTitle((prev) => prev || t);
   const upload = useFileUpload(setTitleIfEmpty);
@@ -92,11 +94,18 @@ export default function TestMode({ embedded = false, platform = "tiktok" } = {})
     <div className="px-5 lg:px-10 py-8 lg:py-12 max-w-4xl mx-auto" data-testid="test-page">
       <div className="mb-10">
         {!embedded && <div className="text-xs uppercase tracking-widest text-yellow-500 mb-2">Test Mode</div>}
-        {embedded && <div className="text-xs uppercase tracking-widest text-yellow-500 mb-2">Test · {platform}</div>}
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Test your draft before you post.</h1>
+        {embedded && (
+          <div className="text-xs uppercase tracking-widest text-yellow-500 mb-2">
+            {shorts ? "Test · YouTube Shorts (hero)" : `Test · ${platform}`}
+          </div>
+        )}
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+          {shorts ? "Pre-flight your Short before upload." : "Test your draft before you post."}
+        </h1>
         <p className="text-neutral-400 mt-3 max-w-2xl">
-          Upload the actual video file — we&apos;ll watch it frame-by-frame and score it 0-100 against viral outliers in your niche,
-          flag the Good / Bad / Ugly, and give you timestamped fixes.
+          {shorts
+            ? "Upload your draft Short. We score the 10 Shorts-native levers (hook, title/cover fit, retention, CTA…), show total + the weakest two to fix first, then you rewrite before you publish."
+            : "Upload the actual video file — we'll watch it frame-by-frame and score it 0-100 against viral outliers in your niche, flag the Good / Bad / Ugly, and give you timestamped fixes."}
         </p>
       </div>
 
@@ -124,7 +133,7 @@ export default function TestMode({ embedded = false, platform = "tiktok" } = {})
           title={submitDisabled && upload.file && !upload.uploadId ? "Click 'Upload to start' first" : ""}
         >
           {submitting ? <Loader2 size={16} className="animate-spin" /> : <Target size={16} />}
-          {submitting ? "Starting test…" : "Score my draft"}
+          {submitting ? "Starting test…" : (shorts ? "Score my Short" : "Score my draft")}
         </button>
         {upload.file && !upload.uploadId && !upload.uploading && (
           <p className="text-xs text-neutral-500" data-testid="test-upload-hint">Upload the file before running the test.</p>
