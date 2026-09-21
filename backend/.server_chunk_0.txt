@@ -24,11 +24,11 @@ from auth import hash_password, verify_password, create_token, CurrentUserId
 import llm
 import storage
 import video as video_mod
-from trends_seed import TIKTOK_PULSE, TIKTOK_CLUSTERS, PLATFORM_STUBS, AS_OF as TRENDS_AS_OF
+from trends_seed import TIKTOK_PULSE, TIKTOK_CLUSTERS, YOUTUBE_PULSE, YOUTUBE_CLUSTERS, PLATFORM_STUBS, AS_OF as TRENDS_AS_OF
 
 # In-memory trend store (Phase 1 seed; Supabase tables in supabase/migrations)
-_TREND_PULSES = {"tiktok": TIKTOK_PULSE}
-_TREND_CLUSTERS = {"tiktok": list(TIKTOK_CLUSTERS)}
+_TREND_PULSES = {"tiktok": TIKTOK_PULSE, "youtube": YOUTUBE_PULSE}
+_TREND_CLUSTERS = {"tiktok": list(TIKTOK_CLUSTERS), "youtube": list(YOUTUBE_CLUSTERS)}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 log = logging.getLogger("server")
@@ -84,8 +84,3 @@ def _analysis_public(a: dict) -> dict:
         "sent_to_swarm_command": a.get("sent_to_swarm_command", False),
         "created_at": a.get("created_at"), "updated_at": a.get("updated_at"),
         "as_of": a.get("as_of"),
-    }
-
-
-def _analysis_public_view(a: dict) -> dict:
-    """Redacted public-facing view of an analysis. No user-identifying fields, no internal flags."""
