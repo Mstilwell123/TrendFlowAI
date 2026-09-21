@@ -98,16 +98,3 @@ def resolve_credentials(user: Optional[Dict[str, Any]]) -> LLMCredentials:
             reason_model=reason_model,
             reason_api_key=reason_key,
             source="user",
-        )
-
-    if _allow_dev_shared():
-        # Local smoke only — never the prod customer path
-        env_perception = _ENV_GEMINI if perception_provider == "gemini" else _ENV_GEMINI
-        if reason_provider == "anthropic":
-            env_reason = _ENV_ANTHROPIC
-        elif reason_provider == "xai":
-            env_reason = _ENV_XAI or _ENV_ANTHROPIC
-        else:
-            env_reason = _ENV_ANTHROPIC
-        if env_perception and env_reason:
-            log.warning(
