@@ -1,4 +1,3 @@
-        if any(x in low for x in ("api key", "quota", "401", "403", "429", "billing", "rate limit")):
             msg = llm.USER_FRIENDLY_KEY_ERROR
         await _update_analysis(analysis_id, status="failed", error=msg[:500])
     finally:
@@ -85,15 +84,3 @@ async def get_ai_config(user_id: str = CurrentUserId):
 @api.put("/ai-config")
 async def put_ai_config(body: AiConfigPutBody, user_id: str = CurrentUserId):
     """Set providers/models and optionally rotate encrypted API keys."""
-    u = await users_col.find_one({"id": user_id}, {"_id": 0})
-    if not u:
-        raise HTTPException(404, "User not found")
-
-    cfg = dict(u.get("ai_config") or {})
-    cfg["perception_provider"] = body.perception_provider
-    cfg["perception_model"] = body.perception_model
-    cfg["reason_provider"] = body.reason_provider
-    cfg["reason_model"] = body.reason_model
-
-    try:
-        if body.perception_api_key and body.perception_api_key.strip():
