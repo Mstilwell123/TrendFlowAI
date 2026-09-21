@@ -9,8 +9,8 @@ export const PLATFORMS = [
   {
     id: "youtube",
     label: "YouTube",
-    status: "coming",
-    lens: "Shorts: search title + swipe-away; Long-form later under this menu",
+    status: "ready",
+    lens: "Shorts pre-flight: hook, title/cover fit, retention, CTA — before you upload",
   },
   {
     id: "instagram",
